@@ -1,0 +1,132 @@
+from aiogram import Router, F, Bot
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db import queries
+from keyboards.keyboards import (
+    share_contact_kb, main_menu_kb, rating_kb,
+)
+
+router = Router()
+
+
+class RegForm(StatesGroup):
+    waiting_name = State()
+    waiting_phone = State()
+
+
+@router.message(CommandStart())
+async def start(message: Message, state: FSMContext, session: AsyncSession):
+    await state.clear()
+    user = await queries.get_user(session, message.from_user.id)
+
+    if user:
+        if user.is_banned:
+            await message.answer("🚫 Siz bloklangansiz. Admin bilan bog'laning.")
+            return
+        await message.answer(
+            f"👋 Xush kelibsiz, {user.full_name}!\nQayerga borishni tanlang:",
+            reply_markup=main_menu_kb(user.role),
+        )
+    else:
+        # New user registration
+        await state.set_state(RegForm.waiting_name)
+        await message.answer(
+            "👋 Assalomu alaykum! Nukus-Mangit Taksi Hamrohi botiga xush kelibsiz!\n\n"
+            "Ro'yxatdan o'tish uchun ismingizni yuboring:"
+        )
+
+
+@router.message(RegForm.waiting_name)
+async def got_name(message: Message, state: FSMContext, session: AsyncSession):
+    if not message.text or len(message.text) < 2:
+        await message.answer("Iltimos, to'g'ri ism kiriting.")
+        return
+
+    await state.update_data(full_name=message.text.strip())
+    await state.set_state(RegForm.waiting_phone)
+    await message.answer(
+        "📱 Endi telefon raqamingizni yuboring:",
+        reply_markup=share_contact_kb(),
+    )
+
+
+@router.message(RegForm.waiting_phone, F.contact)
+async def got_phone(message: Message, state: FSMContext, session: AsyncSession):
+    data = await state.get_data()
+    await state.clear()
+
+    phone = message.contact.phone_number
+    if not phone.startswith("+"):
+        phone = "+" + phone
+
+    user = await queries.create_user(session, message.from_user.id, data["full_name"])
+    await queries.update_user_phone(session, user.user_id, phone)
+
+    await message.answer(
+        f"✅ Ro'yxatdan o'tdingiz!\n\n"
+        f"👤 Ism: {user.full_name}\n"
+        f"📞 Tel: {phone}\n\n"
+        f"Qayerga borishni tanlang:",
+        reply_markup=main_menu_kb(),
+    )
+
+
+@router.message(RegForm.waiting_phone)
+async def phone_not_shared(message: Message):
+    await message.answer(
+        "Iltimos, tugma orqali telefon raqamingizni yuboring.",
+        reply_markup=share_contact_kb(),
+    )
+
+
+@router.message(F.text == "ℹ️ Ma'lumotim")
+async def my_info(message: Message, session: AsyncSession):
+    user = await queries.get_user(session, message.from_user.id)
+    if not user:
+        await message.answer("Avval ro'yxatdan o'ting: /start")
+        return
+
+    role_label = {"passenger": "Yo'lovchi", "driver": "Haydovchi"}.get(user.role or "", "Belgilanmagan")
+    avg = await queries.get_driver_avg_rating(session, user.user_id)
+    rating_text = f"\n⭐ Reytingim: {avg:.1f}" if avg else ""
+
+    await message.answer(
+        f"👤 <b>Ma'lumotlarim</b>\n\n"
+        f"Ism: {user.full_name}\n"
+        f"Tel: {user.phone}\n"
+        f"Rol: {role_label}{rating_text}\n"
+        f"Ro'yxat: {user.created_at.strftime('%d.%m.%Y')}",
+        parse_mode="HTML",
+    )
+
+
+# ============ RATING ============
+
+@router.callback_query(F.data.startswith("rate_"))
+async def give_rating(callback: CallbackQuery, session: AsyncSession):
+    parts = callback.data.split("_")
+    driver_id = int(parts[1])
+    score = int(parts[2])
+
+    await queries.add_rating(
+        session,
+        driver_id=driver_id,
+        passenger_id=callback.from_user.id,
+        score=score,
+    )
+
+    stars = "⭐" * score
+    await callback.message.edit_text(f"✅ Rahmat! Siz {stars} qo'ydingiz.")
+    await callback.answer("Baholaganingiz uchun rahmat!")
+
+
+@router.message(Command("cancel"))
+async def cancel_any(message: Message, state: FSMContext, session: AsyncSession):
+    await state.clear()
+    user = await queries.get_user(session, message.from_user.id)
+    role = user.role if user else None
+    await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
