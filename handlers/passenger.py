@@ -8,7 +8,7 @@ from datetime import datetime
 from db import queries
 from keyboards.keyboards import (
     share_location_kb, passengers_count_kb, cancel_kb,
-    main_menu_kb, passenger_confirm_kb,
+    main_menu_kb, passenger_confirm_kb, skip_cancel_kb,
 )
 from utils.templates import passenger_announcement_text
 from config import CHANNEL_ID
@@ -83,6 +83,14 @@ async def skip_location(message: Message, state: FSMContext):
     )
 
 
+@router.message(PassengerForm.waiting_location, F.text == "❌ Bekor qilish")
+async def cancel_location(message: Message, state: FSMContext, session: AsyncSession):
+    await state.clear()
+    user = await queries.get_user(session, message.from_user.id)
+    role = user.role if user else None
+    await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
+
+
 @router.callback_query(F.data.startswith("pcount_"), PassengerForm.waiting_count)
 async def got_count(callback: CallbackQuery, state: FSMContext):
     count = int(callback.data.split("_")[1])
@@ -90,25 +98,39 @@ async def got_count(callback: CallbackQuery, state: FSMContext):
     await state.set_state(PassengerForm.waiting_price)
     await callback.message.edit_text(f"✅ {count} kishi tanlandi.")
     await callback.message.answer(
-        "💰 Taklif narxingizni yozing (masalan: 25000 so'm):",
+        "💰 Taklif narxingizni yozing (o'rtacha narx: 40 000 so'm):",
         reply_markup=cancel_kb(),
     )
     await callback.answer()
 
 
+@router.message(PassengerForm.waiting_count)
+async def count_text_fallback(message: Message):
+    if message.text == "❌ Bekor qilish":
+        # state clear qilish uchun session kerak, shuning uchun xabar beramiz
+        await message.answer(
+            "Bekor qilish uchun /cancel buyrug'ini yuboring.\n"
+            "Yoki yuqoridagi tugmalardan birini tanlang (1-4)."
+        )
+        return
+    await message.answer("Iltimos, yuqoridagi tugmalardan birini tanlang (1-4).")
+
+
 @router.message(PassengerForm.waiting_price)
-async def got_price(message: Message, state: FSMContext):
+async def got_price(message: Message, state: FSMContext, session: AsyncSession):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
+        user = await queries.get_user(session, message.from_user.id)
+        role = user.role if user else None
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
         return
 
     await state.update_data(price=message.text)
     await state.set_state(PassengerForm.waiting_note)
     await message.answer(
-        "📝 Izoh qo'shing (ixtiyoriy). Masalan: 'Mushugim bor', 'Yukim ko'p'\n"
-        "Yo'q bo'lsa /skip yozing:",
-        reply_markup=cancel_kb(),
+        "📝 Izoh qo'shing (ixtiyoriy).\nMasalan: 'Mushugim bor', 'Yukim ko'p'\n"
+        "Yo'q bo'lsa — «⏭️ O'tkazib yuborish» tugmasini bosing:",
+        reply_markup=skip_cancel_kb(),
     )
 
 
@@ -116,10 +138,12 @@ async def got_price(message: Message, state: FSMContext):
 async def got_note(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
+        user = await queries.get_user(session, message.from_user.id)
+        role = user.role if user else None
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
         return
 
-    note = None if message.text == "/skip" else message.text
+    note = None if message.text == "⏭️ O'tkazib yuborish" else message.text
     data = await state.get_data()
     await state.clear()
 

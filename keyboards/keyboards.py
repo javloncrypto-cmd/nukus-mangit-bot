@@ -55,6 +55,16 @@ def cancel_kb() -> ReplyKeyboardMarkup:
     )
 
 
+def skip_cancel_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="⏭️ O'tkazib yuborish")],
+            [KeyboardButton(text="❌ Bekor qilish")],
+        ],
+        resize_keyboard=True,
+    )
+
+
 # ============ YO'LOVCHI ============
 
 def passengers_count_kb() -> InlineKeyboardMarkup:
