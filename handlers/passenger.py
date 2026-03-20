@@ -1,8 +1,9 @@
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from db import queries
 from keyboards.keyboards import (
@@ -16,9 +17,6 @@ router = Router()
 
 
 class PassengerForm(StatesGroup):
-    waiting_name = State()
-    waiting_phone = State()
-    waiting_direction = State()
     waiting_location = State()
     waiting_count = State()
     waiting_price = State()
@@ -35,20 +33,20 @@ DIRECTION_MAP = {
 async def start_passenger_flow(message: Message, state: FSMContext, session: AsyncSession):
     user = await queries.get_user(session, message.from_user.id)
     if not user:
+        await message.answer("Avval ro'yxatdan o'ting: /start")
         return
 
     if user.is_banned:
         await message.answer("🚫 Siz bloklangansiz. Admin bilan bog'laning.")
         return
 
-    # Check existing active announcement
     existing = await queries.get_active_announcement_by_user(session, message.from_user.id)
     if existing:
         await message.answer("⚠️ Sizda allaqachon faol e'lon mavjud. Avval uni yakunlang.")
         return
 
     direction = DIRECTION_MAP[message.text]
-    await state.update_data(direction=direction, role="passenger")
+    await state.update_data(direction=direction)
     await state.set_state(PassengerForm.waiting_location)
 
     await message.answer(
@@ -80,7 +78,7 @@ async def skip_location(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data.startswith("pcount_"))
+@router.callback_query(F.data.startswith("pcount_"), PassengerForm.waiting_count)
 async def got_count(callback: CallbackQuery, state: FSMContext):
     count = int(callback.data.split("_")[1])
     await state.update_data(passengers_count=count)
@@ -120,7 +118,6 @@ async def got_note(message: Message, state: FSMContext, session: AsyncSession, b
     data = await state.get_data()
     await state.clear()
 
-    # Create announcement in DB
     ann = await queries.create_announcement(
         session,
         user_id=message.from_user.id,
@@ -135,7 +132,6 @@ async def got_note(message: Message, state: FSMContext, session: AsyncSession, b
     user = await queries.get_user(session, message.from_user.id)
     text = passenger_announcement_text(ann, user)
 
-    # Post to channel
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann.id, channel_msg.message_id)
 
@@ -145,8 +141,6 @@ async def got_note(message: Message, state: FSMContext, session: AsyncSession, b
         reply_markup=main_menu_kb(user.role),
     )
 
-
-# ============ PASSENGER FINISH ============
 
 @router.callback_query(F.data.startswith("p_done_"))
 async def passenger_done(callback: CallbackQuery, session: AsyncSession, bot: Bot):
@@ -175,7 +169,6 @@ async def passenger_reload(callback: CallbackQuery, session: AsyncSession, bot: 
         await callback.answer("E'lon topilmadi.")
         return
 
-    # Delete old message and repost
     if ann.channel_msg_id:
         try:
             await bot.delete_message(CHANNEL_ID, ann.channel_msg_id)
@@ -184,7 +177,6 @@ async def passenger_reload(callback: CallbackQuery, session: AsyncSession, bot: 
 
     user = await queries.get_user(session, ann.user_id)
     text = passenger_announcement_text(ann, user)
-    from datetime import datetime
     ann.created_at = datetime.utcnow()
     await session.commit()
 

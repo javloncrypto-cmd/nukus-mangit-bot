@@ -1,11 +1,12 @@
 import os
+from typing import List
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
 CHANNEL_ID: int = int(os.getenv("CHANNEL_ID", "0"))
-ADMIN_IDS: list[int] = [int(x) for x in os.getenv("ADMIN_IDS", "0").split(",")]
+ADMIN_IDS: List[int] = [int(x) for x in os.getenv("ADMIN_IDS", "0").split(",")]
 
 DB_HOST: str = os.getenv("DB_HOST", "localhost")
 DB_PORT: int = int(os.getenv("DB_PORT", "5432"))

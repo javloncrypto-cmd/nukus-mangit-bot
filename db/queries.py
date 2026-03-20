@@ -1,13 +1,14 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, and_
 from sqlalchemy.orm import selectinload
+from typing import Optional, List
 from db.database import User, Announcement, Rating
 from datetime import datetime, timedelta
 
 
 # ==================== USER QUERIES ====================
 
-async def get_user(session: AsyncSession, user_id: int) -> User | None:
+async def get_user(session: AsyncSession, user_id: int) -> Optional[User]:
     result = await session.execute(select(User).where(User.user_id == user_id))
     return result.scalar_one_or_none()
 
@@ -54,9 +55,9 @@ async def create_announcement(
     direction: str,
     passengers_count: int,
     price: str,
-    note: str | None = None,
-    location_lat: float | None = None,
-    location_lon: float | None = None,
+    note: Optional[str] = None,
+    location_lat: Optional[float] = None,
+    location_lon: Optional[float] = None,
 ) -> Announcement:
     ann = Announcement(
         user_id=user_id,
@@ -73,7 +74,7 @@ async def create_announcement(
     return ann
 
 
-async def get_announcement(session: AsyncSession, ann_id: int) -> Announcement | None:
+async def get_announcement(session: AsyncSession, ann_id: int) -> Optional[Announcement]:
     result = await session.execute(
         select(Announcement)
         .options(selectinload(Announcement.user))
@@ -84,7 +85,7 @@ async def get_announcement(session: AsyncSession, ann_id: int) -> Announcement |
 
 async def get_active_announcement_by_user(
     session: AsyncSession, user_id: int
-) -> Announcement | None:
+) -> Optional[Announcement]:
     result = await session.execute(
         select(Announcement).where(
             and_(Announcement.user_id == user_id, Announcement.status == "active")
@@ -126,7 +127,7 @@ async def update_announcement_passengers(
     await session.commit()
 
 
-async def get_expired_announcements(session: AsyncSession) -> list[Announcement]:
+async def get_expired_announcements(session: AsyncSession) -> List[Announcement]:
     cutoff = datetime.utcnow() - timedelta(hours=24)
     result = await session.execute(
         select(Announcement).where(
@@ -147,7 +148,6 @@ async def get_today_announcements_count(session: AsyncSession) -> int:
 
 
 async def get_avg_price_stats(session: AsyncSession) -> dict:
-    """Returns count of active announcements by direction"""
     result_nm = await session.execute(
         select(func.count()).select_from(Announcement).where(
             and_(Announcement.direction == "nukus_mangit", Announcement.status == "active")
@@ -171,7 +171,7 @@ async def add_rating(
     driver_id: int,
     passenger_id: int,
     score: int,
-    comment: str | None = None,
+    comment: Optional[str] = None,
 ) -> Rating:
     rating = Rating(
         driver_id=driver_id,
@@ -185,7 +185,7 @@ async def add_rating(
     return rating
 
 
-async def get_driver_avg_rating(session: AsyncSession, driver_id: int) -> float | None:
+async def get_driver_avg_rating(session: AsyncSession, driver_id: int) -> Optional[float]:
     result = await session.execute(
         select(func.avg(Rating.score)).where(Rating.driver_id == driver_id)
     )
@@ -208,7 +208,7 @@ async def get_low_rating_drivers(session: AsyncSession, threshold: float = 3.0) 
     return result.all()
 
 
-async def get_complaints(session: AsyncSession) -> list[Rating]:
+async def get_complaints(session: AsyncSession) -> List[Rating]:
     result = await session.execute(
         select(Rating)
         .where(and_(Rating.score <= 2, Rating.comment.isnot(None)))

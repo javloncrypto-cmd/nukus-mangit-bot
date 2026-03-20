@@ -1,5 +1,5 @@
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +43,6 @@ async def start_driver_flow(message: Message, state: FSMContext, session: AsyncS
         return
 
     await state.set_state(DriverForm.waiting_direction)
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🚌 Nukus ➡️ Mangit"), KeyboardButton(text="🚌 Mangit ➡️ Nukus")],
@@ -122,16 +121,6 @@ async def driver_note(message: Message, state: FSMContext, session: AsyncSession
         reply_markup=main_menu_kb("driver"),
     )
 
-    # Schedule 1-minute interval check via bot data
-    bot_data = bot.__dict__.get("_bot_data", {})
-    pending = bot_data.get("driver_pending", [])
-    pending.append({"ann_id": ann.id, "user_id": message.from_user.id})
-    if "_bot_data" not in bot.__dict__:
-        bot._bot_data = {}
-    bot._bot_data["driver_pending"] = pending
-
-
-# ============ DRIVER CONTROL CALLBACKS ============
 
 @router.callback_query(F.data.startswith("d_reload_"))
 async def driver_reload(callback: CallbackQuery, session: AsyncSession, bot: Bot):
@@ -223,7 +212,6 @@ async def driver_edit_done(message: Message, state: FSMContext, session: AsyncSe
         await message.answer("E'lon topilmadi.")
         return
 
-    # Update note field with new text
     ann.note = message.text
     await session.commit()
 
@@ -276,8 +264,6 @@ async def driver_passenger_notfound(callback: CallbackQuery, session: AsyncSessi
 
 @router.callback_query(F.data.startswith("d_trip_done_"))
 async def driver_trip_done(callback: CallbackQuery, session: AsyncSession, bot: Bot):
-    ann_id = int(callback.data.split("_")[3])
-    # Send rating request to passengers (simplified: send to driver's chat for now)
     await callback.message.edit_text(
         "✅ Ajoyib! Yo'lovchilar tez orada baholash so'rovi oladi."
     )

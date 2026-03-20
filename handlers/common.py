@@ -6,9 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import queries
-from keyboards.keyboards import (
-    share_contact_kb, main_menu_kb, rating_kb,
-)
+from keyboards.keyboards import share_contact_kb, main_menu_kb, rating_kb
 
 router = Router()
 
@@ -32,7 +30,6 @@ async def start(message: Message, state: FSMContext, session: AsyncSession):
             reply_markup=main_menu_kb(user.role),
         )
     else:
-        # New user registration
         await state.set_state(RegForm.waiting_name)
         await message.answer(
             "👋 Assalomu alaykum! Nukus-Mangit Taksi Hamrohi botiga xush kelibsiz!\n\n"
@@ -103,8 +100,6 @@ async def my_info(message: Message, session: AsyncSession):
         parse_mode="HTML",
     )
 
-
-# ============ RATING ============
 
 @router.callback_query(F.data.startswith("rate_"))
 async def give_rating(callback: CallbackQuery, session: AsyncSession):

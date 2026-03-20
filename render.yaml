@@ -1,7 +1,24 @@
 services:
-  - type: web
+  - type: worker
     name: nukus-mangit-bot
     runtime: python
     pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false

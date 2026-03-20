@@ -1,8 +1,10 @@
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher
+from typing import Callable, Awaitable, Any
+
+from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, TelegramObject
 
 from config import BOT_TOKEN
 from db.database import create_tables, async_session_maker
@@ -14,6 +16,18 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class DbSessionMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict,
+    ) -> Any:
+        async with async_session_maker() as session:
+            data["session"] = session
+            return await handler(event, data)
 
 
 async def set_commands(bot: Bot):
@@ -28,7 +42,6 @@ async def set_commands(bot: Bot):
 async def main():
     logger.info("Bot ishga tushmoqda...")
 
-    # Create DB tables
     await create_tables()
     logger.info("Ma'lumotlar bazasi tayyor.")
 
@@ -36,34 +49,15 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 
-    # Middleware: inject DB session
-    from aiogram import BaseMiddleware
-    from typing import Callable, Awaitable, Any
-    from aiogram.types import TelegramObject
-
-    class DbSessionMiddleware(BaseMiddleware):
-        async def __call__(
-            self,
-            handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
-            event: TelegramObject,
-            data: dict[str, Any],
-        ) -> Any:
-            async with async_session_maker() as session:
-                data["session"] = session
-                return await handler(event, data)
-
     dp.update.middleware(DbSessionMiddleware())
 
-    # Register routers
     dp.include_router(common.router)
     dp.include_router(passenger.router)
     dp.include_router(driver.router)
     dp.include_router(admin.router)
 
-    # Set commands
     await set_commands(bot)
 
-    # Start scheduler
     scheduler = setup_scheduler(bot)
     scheduler.start()
     logger.info("Scheduler ishga tushdi.")
