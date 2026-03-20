@@ -3,19 +3,30 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from typing import Optional
 
 
 # ============ UMUMIY ============
 
-def main_menu_kb(role: str | None = None) -> ReplyKeyboardMarkup:
+def main_menu_kb(role: Optional[str] = None) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.button(text="🚌 Nukus ➡️ Mangit")
     builder.button(text="🚌 Mangit ➡️ Nukus")
-    if role == "driver":
-        builder.button(text="🚗 Haydovchi e'loni")
+    builder.button(text="🚗 Haydovchi e'loni")
     builder.button(text="ℹ️ Ma'lumotim")
-    builder.adjust(2)
+    builder.button(text="🔄 Rolni o'zgartirish")
+    builder.adjust(2, 1, 2)
     return builder.as_markup(resize_keyboard=True)
+
+
+def role_select_kb() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🙋 Yo'lovchi"), KeyboardButton(text="🚗 Haydovchi")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
 
 
 def share_contact_kb() -> ReplyKeyboardMarkup:
