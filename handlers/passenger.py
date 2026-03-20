@@ -37,7 +37,7 @@ async def start_passenger_flow(message: Message, state: FSMContext, session: Asy
         return
 
     if user.is_banned:
-        await message.answer("🚫 Siz bloklangansiz. Admin bilan bog'laning.")
+        await message.answer("🚫 Siz bloklangansiz. Admin bilan bog'laning. @ilkhomovics")
         return
 
     existing = await queries.get_active_announcement_by_user(session, message.from_user.id)
@@ -85,7 +85,7 @@ async def got_count(callback: CallbackQuery, state: FSMContext):
     await state.set_state(PassengerForm.waiting_price)
     await callback.message.edit_text(f"✅ {count} kishi tanlandi.")
     await callback.message.answer(
-        "💰 Taklif narxingizni yozing (masalan: 25000 so'm):",
+        "💰 Taklif narxingizni yozing (masalan: 30000 so'm):",
         reply_markup=cancel_kb(),
     )
     await callback.answer()
@@ -101,7 +101,7 @@ async def got_price(message: Message, state: FSMContext):
     await state.update_data(price=message.text)
     await state.set_state(PassengerForm.waiting_note)
     await message.answer(
-        "📝 Izoh qo'shing (ixtiyoriy). Masalan: 'Mushugim bor', 'Yukim ko'p'\n"
+        "📝 Izoh qo'shing (ixtiyoriy). Xabar haydovchilarga eslatma sifatida ko'rsatiladi \n"
         "Yo'q bo'lsa /skip yozing:",
         reply_markup=cancel_kb(),
     )
