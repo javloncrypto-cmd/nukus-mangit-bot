@@ -16,7 +16,7 @@ async def check_passenger_announcements(bot: Bot):
     from sqlalchemy import select, and_
     from db.database import Announcement
 
-    cutoff = datetime.utcnow() - timedelta(minutes=30)
+    cutoff = datetime.utcnow() - timedelta(minutes=10)
 
     async with async_session_maker() as session:
         result = await session.execute(

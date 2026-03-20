@@ -39,7 +39,12 @@ async def start_driver_flow(message: Message, state: FSMContext, session: AsyncS
 
     existing = await queries.get_active_announcement_by_user(session, message.from_user.id)
     if existing:
-        await message.answer("⚠️ Sizda allaqachon faol e'lon bor. Avval uni yakunlang.")
+        from keyboards.keyboards import active_ann_kb
+        await message.answer(
+            "⚠️ Sizda allaqachon faol e'lon mavjud.\n"
+            "Yangi e'lon berish uchun avvalgi e'lonni yakunlang yoki bekor qiling:",
+            reply_markup=active_ann_kb(existing.id, "driver"),
+        )
         return
 
     await state.set_state(DriverForm.waiting_direction)

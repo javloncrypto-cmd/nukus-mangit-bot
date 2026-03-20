@@ -172,3 +172,26 @@ async def cancel_any(message: Message, state: FSMContext, session: AsyncSession)
     user = await queries.get_user(session, message.from_user.id)
     role = user.role if user else None
     await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
+
+
+# ============ E'LON BEKOR QILISH ============
+
+@router.callback_query(F.data.startswith("cancel_ann_"))
+async def cancel_announcement(callback: CallbackQuery, session: AsyncSession, bot: Bot):
+    from config import CHANNEL_ID
+    ann_id = int(callback.data.split("_")[2])
+    ann = await queries.get_announcement(session, ann_id)
+
+    if not ann or ann.user_id != callback.from_user.id:
+        await callback.answer("Ruxsat yo'q.", show_alert=True)
+        return
+
+    if ann.channel_msg_id:
+        try:
+            await bot.delete_message(CHANNEL_ID, ann.channel_msg_id)
+        except Exception:
+            pass
+
+    await queries.update_announcement_status(session, ann_id, "completed")
+    await callback.message.edit_text("✅ E'lon bekor qilindi. Endi yangi e'lon bera olasiz.")
+    await callback.answer()

@@ -132,3 +132,15 @@ def admin_kb() -> ReplyKeyboardMarkup:
     builder.button(text="🏠 Bosh sahifa")
     builder.adjust(2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
+
+
+def active_ann_kb(ann_id: int, role: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if role == "passenger":
+        builder.button(text="✅ Yakunlash", callback_data=f"p_done_{ann_id}")
+        builder.button(text="❌ Bekor qilish", callback_data=f"cancel_ann_{ann_id}")
+    else:
+        builder.button(text="✅ Yakunlash", callback_data=f"d_full_{ann_id}")
+        builder.button(text="❌ Bekor qilish", callback_data=f"cancel_ann_{ann_id}")
+    builder.adjust(2)
+    return builder.as_markup()
