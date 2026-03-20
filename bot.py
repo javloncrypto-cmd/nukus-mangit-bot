@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Awaitable, Any
 
 from aiogram import Bot, Dispatcher, BaseMiddleware
@@ -16,6 +18,21 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def run_health_server():
+    server = HTTPServer(("0.0.0.0", 10000), HealthHandler)
+    server.serve_forever()
 
 
 class DbSessionMiddleware(BaseMiddleware):
@@ -41,6 +58,11 @@ async def set_commands(bot: Bot):
 
 async def main():
     logger.info("Bot ishga tushmoqda...")
+
+    # Health check server (Render uchun)
+    t = threading.Thread(target=run_health_server, daemon=True)
+    t.start()
+    logger.info("Health check server port 10000 da ishga tushdi.")
 
     await create_tables()
     logger.info("Ma'lumotlar bazasi tayyor.")
