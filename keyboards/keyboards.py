@@ -3,7 +3,7 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
-from typing import Optional
+from typing import Optional, List
 
 
 # ============ UMUMIY ============
@@ -12,20 +12,17 @@ def main_menu_kb(role: Optional[str] = None) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
 
     if role == "driver":
-        # Haydovchi uchun: yo'nalishlar yo'q, haydovchi e'loni bor
         builder.button(text="🚗 Haydovchi e'loni")
         builder.button(text="ℹ️ Ma'lumotim")
         builder.button(text="🔄 Rolni o'zgartirish")
         builder.adjust(1, 2)
     elif role == "passenger":
-        # Yo'lovchi uchun: yo'nalishlar bor, haydovchi e'loni yo'q
         builder.button(text="🚌 Nukus ➡️ Mangit")
         builder.button(text="🚌 Mangit ➡️ Nukus")
         builder.button(text="ℹ️ Ma'lumotim")
         builder.button(text="🔄 Rolni o'zgartirish")
         builder.adjust(2, 2)
     else:
-        # Rol belgilanmagan: hamma tugmalar ko'rsatiladi
         builder.button(text="🚌 Nukus ➡️ Mangit")
         builder.button(text="🚌 Mangit ➡️ Nukus")
         builder.button(text="🚗 Haydovchi e'loni")
@@ -70,6 +67,16 @@ def cancel_kb() -> ReplyKeyboardMarkup:
         keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
         resize_keyboard=True,
     )
+
+
+# ============ PROFIL ============
+
+def profile_edit_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✏️ Ismni o'zgartirish", callback_data="profile_edit_name")
+    builder.button(text="📱 Telefon o'zgartirish", callback_data="profile_edit_phone")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
 # ============ YO'LOVCHI ============
@@ -151,6 +158,51 @@ def admin_kb() -> ReplyKeyboardMarkup:
     return builder.as_markup(resize_keyboard=True)
 
 
+def super_admin_kb() -> ReplyKeyboardMarkup:
+    builder = ReplyKeyboardBuilder()
+    builder.button(text="📊 Statistika")
+    builder.button(text="👤 Foydalanuvchilar")
+    builder.button(text="👥 Adminlar")
+    builder.button(text="📢 Faol e'lonlar")
+    builder.button(text="📋 Shikoyatlar")
+    builder.button(text="⚙️ Sozlamalar")
+    builder.button(text="📜 Tizim loglari")
+    builder.button(text="🏠 Bosh sahifa")
+    builder.adjust(2, 2, 2, 2)
+    return builder.as_markup(resize_keyboard=True)
+
+
+def admin_role_select_kb(target_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👮 Admin", callback_data=f"set_role_admin_{target_id}")
+    builder.button(text="👑 Super Admin", callback_data=f"set_role_super_{target_id}")
+    builder.button(text="❌ Adminlikdan olish", callback_data=f"remove_admin_{target_id}")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def settings_kb(settings: list) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for s in settings:
+        builder.button(text=f"✏️ {s.key}", callback_data=f"edit_setting_{s.key}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def users_list_nav_kb(page: int, total: int, per_page: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    if page > 0:
+        builder.button(text="◀️ Oldingi", callback_data=f"users_page_{page - 1}")
+    builder.button(text=f"{page + 1}/{total_pages}", callback_data="users_page_noop")
+    if page < total_pages - 1:
+        builder.button(text="Keyingi ▶️", callback_data=f"users_page_{page + 1}")
+
+    builder.adjust(3)
+    return builder.as_markup()
+
+
 def active_ann_kb(ann_id: int, role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if role == "passenger":
@@ -159,5 +211,13 @@ def active_ann_kb(ann_id: int, role: str) -> InlineKeyboardMarkup:
     else:
         builder.button(text="✅ Yakunlash", callback_data=f"d_full_{ann_id}")
         builder.button(text="❌ Bekor qilish", callback_data=f"cancel_ann_{ann_id}")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def complaint_review_kb(complaint_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Ko'rib chiqildi", callback_data=f"complaint_close_{complaint_id}")
+    builder.button(text="🚫 Bloklash", callback_data=f"complaint_ban_{complaint_id}")
     builder.adjust(2)
     return builder.as_markup()
