@@ -1,6 +1,5 @@
 from db.database import Announcement, User
 
-
 DIRECTION_LABELS = {
     "nukus_mangit": "Nukus ➡️ Mangit",
     "mangit_nukus": "Mangit ➡️ Nukus",

@@ -6,7 +6,12 @@ load_dotenv()
 
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
 CHANNEL_ID: int = int(os.getenv("CHANNEL_ID", "0"))
-ADMIN_IDS: List[int] = [int(x) for x in os.getenv("ADMIN_IDS", "0").split(",")]
+
+# Super Admin IDlari (eng yuqori daraja, .env orqali)
+SUPER_ADMIN_IDS: List[int] = [int(x) for x in os.getenv("SUPER_ADMIN_IDS", "0").split(",") if x]
+
+# Eski ADMIN_IDS - migratsiya uchun saqlanadi, DB ga ko'chiriladi
+ADMIN_IDS: List[int] = [int(x) for x in os.getenv("ADMIN_IDS", "0").split(",") if x]
 
 DB_HOST: str = os.getenv("DB_HOST", "localhost")
 DB_PORT: int = int(os.getenv("DB_PORT", "5432"))

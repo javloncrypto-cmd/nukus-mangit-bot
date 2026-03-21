@@ -115,14 +115,14 @@ async def driver_note(message: Message, state: FSMContext, session: AsyncSession
 
     user = await queries.get_user(session, message.from_user.id)
     await queries.update_user_role(session, user.user_id, "driver")
+    await queries.add_log(session, user.user_id, "driver_ann_created", f"ann_id: {ann.id}")
 
     text = driver_announcement_text(ann, user)
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann.id, channel_msg.message_id)
 
     await message.answer(
-        "✅ E'loningiz kanalga joylandi!\n"
-        "1 daqiqadan keyin yo'lovchi topilganmi deb so'rayman.",
+        "✅ E'loningiz kanalga joylandi!\n1 daqiqadan keyin yo'lovchi topilganmi deb so'rayman.",
         reply_markup=main_menu_kb("driver"),
     )
 
@@ -148,21 +148,16 @@ async def driver_reload(callback: CallbackQuery, session: AsyncSession, bot: Bot
     text = driver_announcement_text(ann, user)
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann_id, channel_msg.message_id)
+    await queries.add_log(session, callback.from_user.id, "driver_ann_reload", f"ann_id: {ann_id}")
 
-    await callback.message.edit_text(
-        "🔄 E'lon yangilandi.",
-        reply_markup=driver_control_kb(ann_id),
-    )
+    await callback.message.edit_text("🔄 E'lon yangilandi.", reply_markup=driver_control_kb(ann_id))
     await callback.answer("E'lon qayta yuklandi!")
 
 
 @router.callback_query(F.data.startswith("d_change_"))
 async def driver_change_seats(callback: CallbackQuery, session: AsyncSession):
     ann_id = int(callback.data.split("_")[2])
-    await callback.message.answer(
-        "Yangi bo'sh joylar sonini tanlang:",
-        reply_markup=driver_seats_kb(ann_id),
-    )
+    await callback.message.answer("Yangi bo'sh joylar sonini tanlang:", reply_markup=driver_seats_kb(ann_id))
     await callback.answer()
 
 
@@ -228,6 +223,7 @@ async def driver_edit_done(message: Message, state: FSMContext, session: AsyncSe
         except Exception:
             pass
 
+    await queries.add_log(session, message.from_user.id, "driver_ann_edited", f"ann_id: {ann_id}")
     await message.answer("✅ E'lon yangilandi.", reply_markup=main_menu_kb("driver"))
 
 
@@ -246,13 +242,14 @@ async def driver_full(callback: CallbackQuery, session: AsyncSession, bot: Bot):
             pass
 
     await queries.update_announcement_status(session, ann_id, "completed")
+    await queries.add_log(session, callback.from_user.id, "driver_ann_full", f"ann_id: {ann_id}")
     await callback.message.edit_text("✅ E'lon yakunlandi! 1 soatdan keyin safar haqida so'rayman.")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("d_found_"))
 async def driver_passenger_found(callback: CallbackQuery):
-    await callback.message.edit_text("✅ Zo'r! Xavsiz yo'l tilaymiz! 🚗")
+    await callback.message.edit_text("✅ Zo'r! Xavsiz yo'l tilaymiz!")
     await callback.answer()
 
 
@@ -268,10 +265,9 @@ async def driver_passenger_notfound(callback: CallbackQuery, session: AsyncSessi
 
 
 @router.callback_query(F.data.startswith("d_trip_done_"))
-async def driver_trip_done(callback: CallbackQuery, session: AsyncSession, bot: Bot):
-    await callback.message.edit_text(
-        "✅ Ajoyib! Yo'lovchilar tez orada baholash so'rovi oladi."
-    )
+async def driver_trip_done(callback: CallbackQuery, session: AsyncSession):
+    await queries.add_log(session, callback.from_user.id, "driver_trip_done")
+    await callback.message.edit_text("✅ Ajoyib! Yo'lovchilar tez orada baholash so'rovi oladi.")
     await callback.answer()
 
 

@@ -3,23 +3,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import BigInteger, String, Boolean, SmallInteger, Float, Text, ForeignKey, DateTime
 from datetime import datetime
 from typing import Optional, List
-import enum
 from config import DATABASE_URL
 
 
 class Base(DeclarativeBase):
     pass
-
-
-class RoleEnum(str, enum.Enum):
-    passenger = "passenger"
-    driver = "driver"
-
-
-class StatusEnum(str, enum.Enum):
-    active = "active"
-    completed = "completed"
-    expired = "expired"
 
 
 class User(Base):
@@ -33,6 +21,22 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     announcements: Mapped[List["Announcement"]] = relationship(back_populates="user")
+    admin_record: Mapped[Optional["Admin"]] = relationship(
+        back_populates="user", foreign_keys="Admin.user_id", uselist=False
+    )
+
+
+class Admin(Base):
+    __tablename__ = "admins"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), unique=True)
+    role: Mapped[str] = mapped_column(String(20), default="admin")  # 'super_admin' | 'admin'
+    added_by: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="admin_record", foreign_keys=[user_id])
 
 
 class Announcement(Base):
@@ -61,6 +65,39 @@ class Rating(Base):
     passenger_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"))
     score: Mapped[int] = mapped_column(SmallInteger)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BotSetting(Base):
+    __tablename__ = "bot_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    updated_by: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SystemLog(Base):
+    __tablename__ = "system_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(100))
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Complaint(Base):
+    __tablename__ = "complaints"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    from_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"))
+    against_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"))
+    ann_id: Mapped[Optional[int]] = mapped_column(ForeignKey("announcements.id"), nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open | reviewed | closed
+    reviewed_by: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.user_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
