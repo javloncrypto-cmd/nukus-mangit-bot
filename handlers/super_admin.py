@@ -47,6 +47,9 @@ async def _users_page_text(session, page: int) -> tuple[str, int]:
     total = await queries.get_all_users_count(session)
     users = await queries.get_all_users(session, offset=page * PER_PAGE, limit=PER_PAGE)
 
+    if not users:
+        return "👤 Foydalanuvchilar topilmadi.", 0
+
     start = page * PER_PAGE + 1
     end = min(start + PER_PAGE - 1, total)
     text = f"👤 <b>Foydalanuvchilar ({start}–{end} / {total}):</b>\n\n"
@@ -55,11 +58,16 @@ async def _users_page_text(session, page: int) -> tuple[str, int]:
         ban_mark = " 🚫" if u.is_banned else ""
         role = ROLE_LABELS.get(u.role, u.role or "—")
         phone = u.phone or "—"
-        text += (
+        block = (
             f"<b>{u.full_name}</b>{ban_mark}\n"
             f"  📞 {phone}\n"
-            f"  🆔 <code>{u.user_id}</code>  |  {role}\n\n"
+            f"  🆔 <code>{u.user_id}</code> | {role}\n\n"
         )
+        if len(text) + len(block) > 3800:
+            text += "..."
+            break
+        text += block
+
     return text, total
 
 
@@ -68,9 +76,12 @@ async def users_list(message: Message, session: AsyncSession):
     if not await check_super(session, message.from_user.id):
         return
 
-    from keyboards.keyboards import users_list_nav_kb
-    text, total = await _users_page_text(session, 0)
-    await message.answer(text, parse_mode="HTML", reply_markup=users_list_nav_kb(0, total, PER_PAGE))
+    try:
+        from keyboards.keyboards import users_list_nav_kb
+        text, total = await _users_page_text(session, 0)
+        await message.answer(text, parse_mode="HTML", reply_markup=users_list_nav_kb(0, total, PER_PAGE))
+    except Exception as e:
+        await message.answer(f"❌ Xato yuz berdi: {e}")
 
 
 @router.callback_query(F.data.startswith("users_page_"))
@@ -79,10 +90,13 @@ async def users_page(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("Ruxsat yoq.", show_alert=True)
         return
 
-    page = int(callback.data.split("_")[2])
-    from keyboards.keyboards import users_list_nav_kb
-    text, total = await _users_page_text(session, page)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=users_list_nav_kb(page, total, PER_PAGE))
+    try:
+        page = int(callback.data.split("_")[2])
+        from keyboards.keyboards import users_list_nav_kb
+        text, total = await _users_page_text(session, page)
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=users_list_nav_kb(page, total, PER_PAGE))
+    except Exception as e:
+        await callback.message.answer(f"❌ Xato: {e}")
     await callback.answer()
 
 
