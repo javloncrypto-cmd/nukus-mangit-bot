@@ -2,6 +2,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.filters import StateFilter
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
@@ -29,7 +30,9 @@ DIRECTION_MAP = {
 }
 
 
-@router.message(F.text.in_(["🚌 Nukus ➡️ Mangit", "🚌 Mangit ➡️ Nukus"]))
+# StateFilter(None) — faqat hech qanday state bo'lmaganda ishlaydi
+# Bu haydovchining waiting_direction state ini o'g'irlamaydi
+@router.message(StateFilter(None), F.text.in_(["🚌 Nukus ➡️ Mangit", "🚌 Mangit ➡️ Nukus"]))
 async def start_passenger_flow(message: Message, state: FSMContext, session: AsyncSession):
     user = await queries.get_user(session, message.from_user.id)
     if not user:
@@ -38,6 +41,14 @@ async def start_passenger_flow(message: Message, state: FSMContext, session: Asy
 
     if user.is_banned:
         await message.answer("🚫 Siz bloklangansiz. Admin bilan bog'laning.")
+        return
+
+    if user.role == "driver":
+        await message.answer(
+            "🚗 Siz haydovchi sifatida ro'yxatdansiz.\n"
+            "Yo'lovchi sifatida e'lon berish uchun rolni o'zgartiring:",
+            reply_markup=main_menu_kb("driver"),
+        )
         return
 
     existing = await queries.get_active_announcement_by_user(session, message.from_user.id)
@@ -139,15 +150,16 @@ async def got_note(message: Message, state: FSMContext, session: AsyncSession, b
     )
 
     user = await queries.get_user(session, message.from_user.id)
-    text = passenger_announcement_text(ann, user)
+    await queries.update_user_role(session, user.user_id, "passenger")
 
+    text = passenger_announcement_text(ann, user)
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann.id, channel_msg.message_id)
 
     await message.answer(
         "✅ E'loningiz kanalga joylandi!\n"
         "30 daqiqadan keyin sizdan so'rov yuboriladi.",
-        reply_markup=main_menu_kb(user.role),
+        reply_markup=main_menu_kb("passenger"),
     )
 
 
