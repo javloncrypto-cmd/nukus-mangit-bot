@@ -50,6 +50,13 @@ async def search_user_by_id(session: AsyncSession, user_id: int) -> Optional[Use
     return await get_user(session, user_id)
 
 
+async def get_all_users(session: AsyncSession, offset: int = 0, limit: int = 20) -> List[User]:
+    result = await session.execute(
+        select(User).order_by(desc(User.created_at)).offset(offset).limit(limit)
+    )
+    return result.scalars().all()
+
+
 # ==================== ADMIN ====================
 
 async def get_admin(session: AsyncSession, user_id: int) -> Optional[Admin]:

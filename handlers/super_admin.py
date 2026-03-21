@@ -32,6 +32,96 @@ async def super_panel(message: Message, session: AsyncSession):
     await message.answer("👑 Super Admin panel:", reply_markup=super_admin_kb())
 
 
+# ============ FOYDALANUVCHILAR RO'YXATI ============
+
+PER_PAGE = 20
+
+ROLE_LABELS = {
+    "driver": "Haydovchi",
+    "passenger": "Yolovchi",
+    None: "Belgilanmagan",
+}
+
+
+async def _users_page_text(session, page: int) -> tuple[str, int]:
+    total = await queries.get_all_users_count(session)
+    users = await queries.get_all_users(session, offset=page * PER_PAGE, limit=PER_PAGE)
+
+    start = page * PER_PAGE + 1
+    end = min(start + PER_PAGE - 1, total)
+    text = f"👤 <b>Foydalanuvchilar ({start}–{end} / {total}):</b>\n\n"
+
+    for u in users:
+        ban_mark = " 🚫" if u.is_banned else ""
+        role = ROLE_LABELS.get(u.role, u.role or "—")
+        phone = u.phone or "—"
+        text += (
+            f"<b>{u.full_name}</b>{ban_mark}\n"
+            f"  📞 {phone}\n"
+            f"  🆔 <code>{u.user_id}</code>  |  {role}\n\n"
+        )
+    return text, total
+
+
+@router.message(F.text == "👤 Foydalanuvchilar")
+async def users_list(message: Message, session: AsyncSession):
+    if not await check_super(session, message.from_user.id):
+        return
+
+    from keyboards.keyboards import users_list_nav_kb
+    text, total = await _users_page_text(session, 0)
+    await message.answer(text, parse_mode="HTML", reply_markup=users_list_nav_kb(0, total, PER_PAGE))
+
+
+@router.callback_query(F.data.startswith("users_page_"))
+async def users_page(callback: CallbackQuery, session: AsyncSession):
+    if not await check_super(session, callback.from_user.id):
+        await callback.answer("Ruxsat yoq.", show_alert=True)
+        return
+
+    page = int(callback.data.split("_")[2])
+    from keyboards.keyboards import users_list_nav_kb
+    text, total = await _users_page_text(session, page)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=users_list_nav_kb(page, total, PER_PAGE))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sa_ban_"))
+async def sa_ban_user(callback: CallbackQuery, session: AsyncSession, bot: Bot):
+    if not await check_super(session, callback.from_user.id):
+        await callback.answer("Ruxsat yoq.", show_alert=True)
+        return
+    user_id = int(callback.data.split("_")[2])
+    user = await queries.get_user(session, user_id)
+    await queries.ban_user(session, user_id, True)
+    await queries.add_log(session, callback.from_user.id, "sa_ban", f"target: {user_id}")
+    name = user.full_name if user else user_id
+    await callback.message.edit_text(f"🚫 <b>{name}</b> (<code>{user_id}</code>) bloklandi.", parse_mode="HTML")
+    try:
+        await bot.send_message(user_id, "🚫 Siz admin tomonidan bloklandingiz.")
+    except Exception:
+        pass
+    await callback.answer("Bloklandi.")
+
+
+@router.callback_query(F.data.startswith("sa_unban_"))
+async def sa_unban_user(callback: CallbackQuery, session: AsyncSession, bot: Bot):
+    if not await check_super(session, callback.from_user.id):
+        await callback.answer("Ruxsat yoq.", show_alert=True)
+        return
+    user_id = int(callback.data.split("_")[2])
+    user = await queries.get_user(session, user_id)
+    await queries.ban_user(session, user_id, False)
+    await queries.add_log(session, callback.from_user.id, "sa_unban", f"target: {user_id}")
+    name = user.full_name if user else user_id
+    await callback.message.edit_text(f"✅ <b>{name}</b> (<code>{user_id}</code>) blokdan chiqarildi.", parse_mode="HTML")
+    try:
+        await bot.send_message(user_id, "✅ Sizning blokingiz olib tashlandi.")
+    except Exception:
+        pass
+    await callback.answer("Blok ochildi.")
+
+
 # ============ ADMINLAR ============
 
 @router.message(F.text == "👥 Adminlar")

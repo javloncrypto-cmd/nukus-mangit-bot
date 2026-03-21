@@ -188,13 +188,14 @@ def super_admin_kb() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.button(text="📊 Statistika")
     builder.button(text="👥 Adminlar")
+    builder.button(text="👤 Foydalanuvchilar")
     builder.button(text="⚙️ Sozlamalar")
     builder.button(text="📜 Tizim loglari")
     builder.button(text="📢 Faol e'lonlar")
     builder.button(text="🚫 Qora ro'yxat")
     builder.button(text="📋 Shikoyatlar")
     builder.button(text="🏠 Bosh sahifa")
-    builder.adjust(2, 2, 2, 1, 1)
+    builder.adjust(2, 2, 2, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 
@@ -207,7 +208,23 @@ def admin_role_select_kb(user_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def settings_kb(settings: list) -> InlineKeyboardMarkup:
+def users_list_nav_kb(page: int, total: int, per_page: int = 20) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if page > 0:
+        builder.button(text="⬅️ Oldingi", callback_data=f"users_page_{page - 1}")
+    if (page + 1) * per_page < total:
+        builder.button(text="Keyingi ➡️", callback_data=f"users_page_{page + 1}")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def user_detail_kb(user_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚫 Bloklash", callback_data=f"sa_ban_{user_id}")
+    builder.button(text="✅ Blokdan chiqarish", callback_data=f"sa_unban_{user_id}")
+    builder.button(text="👮 Admin qilish", callback_data=f"set_role_admin_{user_id}")
+    builder.adjust(2, 1)
+    return builder.as_markup()
     builder = InlineKeyboardBuilder()
     for s in settings:
         builder.button(text=f"✏️ {s.key}", callback_data=f"edit_setting_{s.key}")
