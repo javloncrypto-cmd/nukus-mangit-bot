@@ -254,6 +254,6 @@ async def stats(message: Message, session: AsyncSession):
         f"  • Nukus→Mangit: <b>{direction_stats['nukus_mangit']}</b>\n"
         f"  • Mangit→Nukus: <b>{direction_stats['mangit_nukus']}</b>\n\n"
         f"👥 Adminlar:\n{admin_text or '  —'}\n"
-        f"🏆 Top haydovchilar:\n{top_text or '  Hali ma\'lumot yo\'q'}"
+        f"🏆 Top haydovchilar:\n{top_text or '  Hali malumot yoq'}"
     )
     await message.answer(text, parse_mode="HTML")
