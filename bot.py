@@ -7,6 +7,7 @@ from collections import defaultdict
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Callable, Awaitable, Any
 
+import aiohttp
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.types import BotCommand, TelegramObject, Message, CallbackQuery
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -43,6 +44,16 @@ def run_health_server():
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
+# ===================== CONFLICT FIX =====================
+
+async def drop_pending_updates(bot: Bot):
+    """Eski instance qoldiqlarini tozalaydi — conflict oldini oladi."""
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        logger.info("Webhook va pending updates tozalandi.")
+    except Exception as e:
+        logger.warning(f"delete_webhook xato: {e}")
+
 # ===================== STORAGE =====================
 
 def get_storage():
@@ -56,7 +67,7 @@ def get_storage():
         except Exception as e:
             logger.warning(f"Redis ulanmadi, MemoryStorage: {e}")
     else:
-        logger.warning("REDIS_URL topilmadi — MemoryStorage (restart'da state o'chadi).")
+        logger.warning("REDIS_URL topilmadi — MemoryStorage ishlatilmoqda.")
     return MemoryStorage()
 
 # ===================== MIDDLEWARES =====================
@@ -150,6 +161,7 @@ async def main():
     t = threading.Thread(target=run_health_server, daemon=True)
     t.start()
 
+    # DB ulanish — 5 marta urinish
     for attempt in range(1, 6):
         try:
             logger.info(f"DB ulanish {attempt}/5...")
@@ -168,6 +180,12 @@ async def main():
         logger.warning(f"Migratsiya xato (davom etiladi): {e}")
 
     bot = Bot(token=BOT_TOKEN)
+
+    # Conflict oldini olish: webhook o'chir + eski so'rovlarni tozala
+    await drop_pending_updates(bot)
+    # Eski instance to'liq o'lishi uchun 2 soniya kutish
+    await asyncio.sleep(2)
+
     storage = get_storage()
     dp = Dispatcher(storage=storage)
 
@@ -191,7 +209,11 @@ async def main():
     logger.info("Scheduler ishga tushdi. Polling boshlanmoqda...")
 
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await dp.start_polling(
+            bot,
+            allowed_updates=dp.resolve_used_update_types(),
+            drop_pending_updates=True,  # har restart'da eski xabarlarni o'tkazib yubor
+        )
     finally:
         scheduler.shutdown()
         await bot.session.close()
