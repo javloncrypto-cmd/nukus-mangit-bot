@@ -225,6 +225,9 @@ def user_detail_kb(user_id: int) -> InlineKeyboardMarkup:
     builder.button(text="👮 Admin qilish", callback_data=f"set_role_admin_{user_id}")
     builder.adjust(2, 1)
     return builder.as_markup()
+
+
+def settings_kb(settings: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for s in settings:
         builder.button(text=f"✏️ {s.key}", callback_data=f"edit_setting_{s.key}")
