@@ -10,29 +10,32 @@ from keyboards.keyboards import (
 
 
 async def check_passenger_announcements(bot: Bot):
+    """30 daqiqa o'tgan yo'lovchi e'lonlarini tekshiradi"""
     from datetime import datetime, timedelta
     from sqlalchemy import select, and_
     from db.database import Announcement
 
-    async with async_session_maker() as session:
-        minutes = int(await queries.get_setting(session, "passenger_check_min", "30"))
-        cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    cutoff = datetime.utcnow() - timedelta(minutes=30)
 
+    async with async_session_maker() as session:
         result = await session.execute(
             select(Announcement).where(
-                and_(Announcement.status == "active", Announcement.created_at <= cutoff)
+                and_(
+                    Announcement.status == "active",
+                    Announcement.created_at <= cutoff,
+                )
             )
         )
         anns = result.scalars().all()
 
         for ann in anns:
             user = await queries.get_user(session, ann.user_id)
-            if not user or user.role != "passenger":
+            if not user:
                 continue
             try:
                 await bot.send_message(
                     ann.user_id,
-                    f"⏱ {minutes} daqiqa o'tdi. E'lonni yakunlaymizmi?",
+                    "⏱ 30 daqiqa o'tdi. E'lonni yakunlaymizmi?",
                     reply_markup=passenger_confirm_kb(ann.id),
                 )
             except Exception:
@@ -40,21 +43,27 @@ async def check_passenger_announcements(bot: Bot):
 
 
 async def check_driver_interval(bot: Bot):
+    """1 daqiqadan 10 daqiqagacha bo'lgan haydovchi e'lonlarini tekshiradi.
+
+    Avvalgi versiyada cutoff_max=now-30s bo'lgani uchun juda tor oyna bo'lib,
+    ko'p e'lonlar o'tib ketardi. Endi barcha 1-10 daqiqa oralig'idagi
+    faol haydovchi e'lonlari tekshiriladi.
+    """
     from datetime import datetime, timedelta
     from sqlalchemy import select, and_
     from db.database import Announcement
 
-    async with async_session_maker() as session:
-        minutes = int(await queries.get_setting(session, "driver_check_min", "1"))
-        cutoff_min = datetime.utcnow() - timedelta(minutes=minutes)
-        cutoff_max = datetime.utcnow() - timedelta(seconds=max(30, minutes * 60 - 30))
+    now = datetime.utcnow()
+    cutoff_min = now - timedelta(minutes=10)
+    cutoff_max = now - timedelta(minutes=1)
 
+    async with async_session_maker() as session:
         result = await session.execute(
             select(Announcement).where(
                 and_(
                     Announcement.status == "active",
-                    Announcement.created_at <= cutoff_min,
-                    Announcement.created_at >= cutoff_max,
+                    Announcement.created_at <= cutoff_max,
+                    Announcement.created_at >= cutoff_min,
                 )
             )
         )
@@ -75,20 +84,22 @@ async def check_driver_interval(bot: Bot):
 
 
 async def check_driver_feedback(bot: Bot):
+    """1 soat avval yakunlangan haydovchi e'lonlari uchun feedback so'raydi."""
     from datetime import datetime, timedelta
     from sqlalchemy import select, and_
     from db.database import Announcement
 
-    async with async_session_maker() as session:
-        cutoff_min = datetime.utcnow() - timedelta(hours=1)
-        cutoff_max = datetime.utcnow() - timedelta(minutes=50)
+    now = datetime.utcnow()
+    cutoff_min = now - timedelta(hours=1, minutes=10)
+    cutoff_max = now - timedelta(hours=1)
 
+    async with async_session_maker() as session:
         result = await session.execute(
             select(Announcement).where(
                 and_(
                     Announcement.status == "completed",
-                    Announcement.created_at <= cutoff_min,
-                    Announcement.created_at >= cutoff_max,
+                    Announcement.created_at <= cutoff_max,
+                    Announcement.created_at >= cutoff_min,
                 )
             )
         )
@@ -109,22 +120,11 @@ async def check_driver_feedback(bot: Bot):
 
 
 async def cleanup_expired_announcements(bot: Bot):
+    """24 soatdan o'tgan e'lonlarni tozalaydi."""
     from config import CHANNEL_ID
 
     async with async_session_maker() as session:
-        hours = int(await queries.get_setting(session, "ann_expire_hours", "24"))
-        from datetime import datetime, timedelta
-        from sqlalchemy import select, and_
-        from db.database import Announcement
-
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
-        result = await session.execute(
-            select(Announcement).where(
-                and_(Announcement.status == "active", Announcement.created_at < cutoff)
-            )
-        )
-        anns = result.scalars().all()
-
+        anns = await queries.get_expired_announcements(session)
         for ann in anns:
             if ann.channel_msg_id:
                 try:
@@ -132,15 +132,41 @@ async def cleanup_expired_announcements(bot: Bot):
                 except Exception:
                     pass
             await queries.update_announcement_status(session, ann.id, "expired")
-            await queries.add_log(session, None, "ann_expired", f"ann_id: {ann.id}")
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
 
-    scheduler.add_job(check_passenger_announcements, trigger="interval", minutes=5, args=[bot], id="passenger_check")
-    scheduler.add_job(check_driver_interval,          trigger="interval", minutes=1, args=[bot], id="driver_interval")
-    scheduler.add_job(check_driver_feedback,          trigger="interval", minutes=10, args=[bot], id="driver_feedback")
-    scheduler.add_job(cleanup_expired_announcements,  trigger="interval", hours=1,   args=[bot], id="cleanup")
+    scheduler.add_job(
+        check_passenger_announcements,
+        trigger="interval",
+        minutes=5,
+        args=[bot],
+        id="passenger_check",
+    )
+
+    scheduler.add_job(
+        check_driver_interval,
+        trigger="interval",
+        minutes=1,
+        args=[bot],
+        id="driver_interval",
+    )
+
+    scheduler.add_job(
+        check_driver_feedback,
+        trigger="interval",
+        minutes=10,
+        args=[bot],
+        id="driver_feedback",
+    )
+
+    scheduler.add_job(
+        cleanup_expired_announcements,
+        trigger="interval",
+        hours=1,
+        args=[bot],
+        id="cleanup",
+    )
 
     return scheduler
