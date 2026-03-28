@@ -86,7 +86,37 @@ async def skip_location(message: Message, state: FSMContext):
     )
 
 
+@router.message(PassengerForm.waiting_location, F.text == "❌ Bekor qilish")
+async def cancel_at_location(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
+
+
+@router.message(PassengerForm.waiting_location)
+async def location_fallback(message: Message):
+    """Joylashuv kutilayotganda boshqa matn kelsa — eslatma."""
+    await message.answer(
+        "📍 Iltimos, joylashuvingizni yuboring yoki '⏭️ O'tkazib yuborish' tugmasini bosing.",
+        reply_markup=share_location_kb(),
+    )
+
+
 # ============ ODAMLAR SONI ============
+
+@router.message(PassengerForm.waiting_count, F.text == "❌ Bekor qilish")
+async def cancel_at_count(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
+
+
+@router.message(PassengerForm.waiting_count)
+async def count_fallback(message: Message):
+    """Odam soni kutilayotganda matn kelsa — eslatma."""
+    await message.answer(
+        "👥 Iltimos, quyidagi raqamlardan birini tanlang:",
+        reply_markup=passengers_count_kb(),
+    )
+
 
 @router.callback_query(F.data.startswith("pcount_"), PassengerForm.waiting_count)
 async def got_count(callback: CallbackQuery, state: FSMContext):
