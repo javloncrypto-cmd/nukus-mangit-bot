@@ -15,32 +15,7 @@ Telegram bot — Nukus va Mangit orasida yo'lovchilarni bog'lash.
 - PostgreSQL 14+
 - SQLAlchemy 2.0 (async)
 - APScheduler 3.x
-- Redis (FSM uchun)
 
-## Fayl tuzilmasi
-```
-nukus_mangit_bot/
-├── bot.py                  # Asosiy kirish nuqtasi
-├── config.py               # .env sozlamalari + DRIVER_MODE flag
-├── requirements.txt        # Kutubxonalar
-├── migrations.sql          # DB jadvallari
-├── .env.example            # Namuna .env
-├── handlers/
-│   ├── common.py           # /start, profil, shikoyat
-│   ├── passenger.py        # Yo'lovchi flow (V1 faol)
-│   ├── driver.py           # Haydovchi flow (V2 uchun saqlangan)
-│   ├── admin.py            # Admin panel
-│   └── super_admin.py      # Super Admin panel
-├── keyboards/
-│   └── keyboards.py        # Barcha tugmalar (V2 tugmalari comment)
-├── db/
-│   ├── database.py         # ORM modellari
-│   └── queries.py          # DB so'rovlar
-├── scheduler/
-│   └── tasks.py            # APScheduler (V2 vazifalari comment)
-└── utils/
-    └── templates.py        # Kanal shablonlari
-```
 
 ## O'rnatish
 
