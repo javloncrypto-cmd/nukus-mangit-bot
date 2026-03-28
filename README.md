@@ -8,7 +8,6 @@ Telegram bot — Nukus va Mangit orasida yo'lovchi va haydovchilarni bog'lash.
 - PostgreSQL 14+
 - SQLAlchemy 2.0 (async)
 - APScheduler 3.x
-- Oracle Cloud Ubuntu 22.04
 
 ## O'rnatish
 
