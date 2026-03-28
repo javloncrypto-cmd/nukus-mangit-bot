@@ -46,15 +46,15 @@ async def get_all_users_count(session: AsyncSession) -> int:
     return result.scalar_one()
 
 
-async def search_user_by_id(session: AsyncSession, user_id: int) -> Optional[User]:
-    return await get_user(session, user_id)
-
-
 async def get_all_users(session: AsyncSession, offset: int = 0, limit: int = 20) -> List[User]:
     result = await session.execute(
         select(User).order_by(desc(User.created_at)).offset(offset).limit(limit)
     )
     return result.scalars().all()
+
+
+async def search_user_by_id(session: AsyncSession, user_id: int) -> Optional[User]:
+    return await get_user(session, user_id)
 
 
 # ==================== ADMIN ====================
@@ -67,7 +67,6 @@ async def get_admin(session: AsyncSession, user_id: int) -> Optional[Admin]:
 
 
 async def get_admin_role(session: AsyncSession, user_id: int) -> Optional[str]:
-    """Foydalanuvchi admin rolini qaytaradi: 'super_admin', 'admin' yoki None"""
     admin = await get_admin(session, user_id)
     return admin.role if admin else None
 
@@ -117,7 +116,6 @@ async def get_all_admins(session: AsyncSession) -> List[Admin]:
 
 
 async def migrate_old_admin_ids(session: AsyncSession, admin_ids: list, super_admin_ids: list):
-    """Eski ADMIN_IDS ni DB ga ko'chiradi — bir marta ishlatiladi"""
     for uid in super_admin_ids:
         user = await get_user(session, uid)
         if user:
@@ -190,6 +188,7 @@ async def create_announcement(
     note: Optional[str] = None,
     location_lat: Optional[float] = None,
     location_lon: Optional[float] = None,
+    ann_type: str = "passenger",   # V2: 'driver' ham keladi
 ) -> Announcement:
     ann = Announcement(
         user_id=user_id,
@@ -199,6 +198,7 @@ async def create_announcement(
         note=note,
         location_lat=location_lat,
         location_lon=location_lon,
+        ann_type=ann_type,
     )
     session.add(ann)
     await session.commit()
@@ -281,7 +281,8 @@ async def get_today_announcements_count(session: AsyncSession) -> int:
     return result.scalar_one()
 
 
-async def get_avg_price_stats(session: AsyncSession) -> dict:
+async def get_direction_stats(session: AsyncSession) -> dict:
+    """Faol e'lonlar yo'nalish bo'yicha soni."""
     r_nm = await session.execute(
         select(func.count()).select_from(Announcement).where(
             and_(Announcement.direction == "nukus_mangit", Announcement.status == "active")
@@ -295,7 +296,15 @@ async def get_avg_price_stats(session: AsyncSession) -> dict:
     return {"nukus_mangit": r_nm.scalar_one(), "mangit_nukus": r_mn.scalar_one()}
 
 
-# ==================== RATINGS ====================
+# V2 (kelajak): haydovchilar uchun kerakli funksiyalar
+# async def get_avg_price_stats(...)  → get_direction_stats() ga o'zgartirildi
+# async def get_top_drivers(...)      → V2 da qayta yoqiladi
+# async def get_driver_avg_rating(...)→ V2 da qayta yoqiladi
+
+
+# ==================== RATINGS (V2) ====================
+# Hozir jadval yaratiladi, lekin UI'da ishlatilmaydi.
+# V2 da haydovchi qo'shilganda quyidagi funksiyalar yoqiladi:
 
 async def add_rating(
     session: AsyncSession,
@@ -325,25 +334,6 @@ async def get_driver_rating_count(session: AsyncSession, driver_id: int) -> int:
     return result.scalar_one()
 
 
-async def get_low_rating_drivers(session: AsyncSession, threshold: float = 3.0) -> list:
-    result = await session.execute(
-        select(Rating.driver_id, func.avg(Rating.score).label("avg_score"))
-        .group_by(Rating.driver_id)
-        .having(func.avg(Rating.score) < threshold)
-    )
-    return result.all()
-
-
-async def get_complaints_ratings(session: AsyncSession) -> List[Rating]:
-    result = await session.execute(
-        select(Rating)
-        .where(and_(Rating.score <= 2, Rating.comment.isnot(None)))
-        .order_by(desc(Rating.created_at))
-        .limit(20)
-    )
-    return result.scalars().all()
-
-
 async def get_top_drivers(session: AsyncSession, limit: int = 5) -> list:
     result = await session.execute(
         select(Rating.driver_id, func.avg(Rating.score).label("avg"), func.count().label("cnt"))
@@ -351,6 +341,15 @@ async def get_top_drivers(session: AsyncSession, limit: int = 5) -> list:
         .having(func.count() >= 3)
         .order_by(func.avg(Rating.score).desc())
         .limit(limit)
+    )
+    return result.all()
+
+
+async def get_low_rating_drivers(session: AsyncSession, threshold: float = 3.0) -> list:
+    result = await session.execute(
+        select(Rating.driver_id, func.avg(Rating.score).label("avg_score"))
+        .group_by(Rating.driver_id)
+        .having(func.avg(Rating.score) < threshold)
     )
     return result.all()
 

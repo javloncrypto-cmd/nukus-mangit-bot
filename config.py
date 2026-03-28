@@ -22,3 +22,9 @@ DB_PASS: str = os.getenv("DB_PASS", "")
 DATABASE_URL: str = (
     f"postgresql+asyncpg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
+
+# =========================================================
+# V1: Faqat yo'lovchi rejimi faol
+# V2 (kelajak): DRIVER_MODE = True qilib haydovchi yoqiladi
+# =========================================================
+DRIVER_MODE: bool = False

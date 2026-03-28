@@ -5,16 +5,16 @@ import threading
 import time
 from collections import defaultdict
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Callable, Awaitable, Any
 
-import aiohttp
 from aiogram import Bot, Dispatcher, BaseMiddleware
-from aiogram.types import BotCommand, TelegramObject, Message, CallbackQuery
+from aiogram.types import BotCommand, Message, CallbackQuery
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, ADMIN_IDS, SUPER_ADMIN_IDS
 from db.database import create_tables, async_session_maker
-from handlers import common, passenger, driver, admin, super_admin
+from handlers import common, passenger, admin, super_admin
+# V2: haydovchi handleri qo'shilganda quyidagini yoching:
+# from handlers import driver
 from scheduler.tasks import setup_scheduler
 
 logging.basicConfig(
@@ -22,6 +22,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
 
 # ===================== HEALTH SERVER =====================
 
@@ -31,12 +32,15 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
         self.wfile.write(b"OK")
+
     def do_HEAD(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
+
     def log_message(self, format, *args):
         pass
+
 
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
@@ -44,15 +48,16 @@ def run_health_server():
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
+
 # ===================== CONFLICT FIX =====================
 
 async def drop_pending_updates(bot: Bot):
-    """Eski instance qoldiqlarini tozalaydi — conflict oldini oladi."""
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         logger.info("Webhook va pending updates tozalandi.")
     except Exception as e:
         logger.warning(f"delete_webhook xato: {e}")
+
 
 # ===================== STORAGE =====================
 
@@ -70,6 +75,7 @@ def get_storage():
         logger.warning("REDIS_URL topilmadi — MemoryStorage ishlatilmoqda.")
     return MemoryStorage()
 
+
 # ===================== MIDDLEWARES =====================
 
 class DbSessionMiddleware(BaseMiddleware):
@@ -80,6 +86,7 @@ class DbSessionMiddleware(BaseMiddleware):
 
 
 class AntiSpamMiddleware(BaseMiddleware):
+    """Soniyada 3 dan ortiq so'rov yuborishni bloklaydi."""
     LIMIT = 3
     WINDOW = 1.0
     COOLDOWN = 5.0
@@ -135,6 +142,7 @@ class ErrorMiddleware(BaseMiddleware):
             except Exception:
                 pass
 
+
 # ===================== SETUP =====================
 
 async def set_commands(bot: Bot):
@@ -153,11 +161,13 @@ async def migrate_admins():
         await queries.migrate_old_admin_ids(session, ADMIN_IDS, SUPER_ADMIN_IDS)
     logger.info("Admin migratsiyasi bajarildi.")
 
+
 # ===================== MAIN =====================
 
 async def main():
-    logger.info("Bot ishga tushmoqda...")
+    logger.info("Bot v1 ishga tushmoqda (faqat yo'lovchi rejimi)...")
 
+    # Health server (Render uchun)
     t = threading.Thread(target=run_health_server, daemon=True)
     t.start()
 
@@ -180,24 +190,24 @@ async def main():
         logger.warning(f"Migratsiya xato (davom etiladi): {e}")
 
     bot = Bot(token=BOT_TOKEN)
-
-    # Conflict oldini olish: webhook o'chir + eski so'rovlarni tozala
     await drop_pending_updates(bot)
-    # Eski instance to'liq o'lishi uchun 2 soniya kutish
     await asyncio.sleep(2)
 
     storage = get_storage()
     dp = Dispatcher(storage=storage)
 
+    # Middlewarelar
     dp.update.middleware(ErrorMiddleware())
     dp.update.middleware(AntiSpamMiddleware())
     dp.update.middleware(DbSessionMiddleware())
 
+    # Routerlar — tartib muhim (super_admin birinchi)
     dp.include_router(super_admin.router)
     dp.include_router(admin.router)
     dp.include_router(common.router)
     dp.include_router(passenger.router)
-    dp.include_router(driver.router)
+    # V2: haydovchi qo'shilganda quyidagini yoching:
+    # dp.include_router(driver.router)
 
     try:
         await set_commands(bot)
@@ -212,7 +222,7 @@ async def main():
         await dp.start_polling(
             bot,
             allowed_updates=dp.resolve_used_update_types(),
-            drop_pending_updates=True,  # har restart'da eski xabarlarni o'tkazib yubor
+            drop_pending_updates=True,
         )
     finally:
         scheduler.shutdown()

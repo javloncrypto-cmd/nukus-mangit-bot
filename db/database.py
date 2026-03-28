@@ -16,6 +16,8 @@ class User(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     full_name: Mapped[str] = mapped_column(String(100))
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # V1: role faqat 'passenger' | None
+    # V2 (kelajak): 'driver' roli qo'shiladi
     role: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -44,19 +46,24 @@ class Announcement(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"))
-    direction: Mapped[str] = mapped_column(String(20))
+    direction: Mapped[str] = mapped_column(String(20))  # 'nukus_mangit' | 'mangit_nukus'
     passengers_count: Mapped[int] = mapped_column(SmallInteger)
     price: Mapped[str] = mapped_column(String(50))
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     location_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     location_lon: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     channel_msg_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # V1 statuslar: 'active' | 'completed' | 'expired'
     status: Mapped[str] = mapped_column(String(20), default="active")
+    # V1: ann_type faqat 'passenger'
+    # V2 (kelajak): 'driver' qo'shiladi
+    ann_type: Mapped[str] = mapped_column(String(20), default="passenger")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="announcements")
 
 
+# V2 (kelajak): Rating modeli haydovchilar uchun kerak bo'ladi
 class Rating(Base):
     __tablename__ = "ratings"
 

@@ -2,14 +2,13 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.filters import StateFilter
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from db import queries
 from keyboards.keyboards import (
     share_location_kb, passengers_count_kb, cancel_kb,
-    main_menu_kb, passenger_confirm_kb,
+    main_menu_kb, passenger_confirm_kb, active_ann_kb,
 )
 from utils.templates import passenger_announcement_text
 from config import CHANNEL_ID
@@ -30,34 +29,25 @@ DIRECTION_MAP = {
 }
 
 
-# StateFilter(None) — faqat hech qanday state bo'lmaganda ishlaydi
-# Bu haydovchining waiting_direction state ini o'g'irlamaydi
-@router.message(StateFilter(None), F.text.in_(["🚌 Nukus ➡️ Mangit", "🚌 Mangit ➡️ Nukus"]))
+# ============ E'LON BOSHLASH ============
+
+@router.message(F.text.in_(["🚌 Nukus ➡️ Mangit", "🚌 Mangit ➡️ Nukus"]))
 async def start_passenger_flow(message: Message, state: FSMContext, session: AsyncSession):
     user = await queries.get_user(session, message.from_user.id)
     if not user:
         await message.answer("Avval ro'yxatdan o'ting: /start")
         return
-
     if user.is_banned:
         await message.answer("🚫 Siz bloklangansiz. Admin bilan bog'laning.")
         return
 
-    if user.role == "driver":
-        await message.answer(
-            "🚗 Siz haydovchi sifatida ro'yxatdansiz.\n"
-            "Yo'lovchi sifatida e'lon berish uchun rolni o'zgartiring:",
-            reply_markup=main_menu_kb("driver"),
-        )
-        return
-
+    # Faol e'lon tekshiruvi
     existing = await queries.get_active_announcement_by_user(session, message.from_user.id)
     if existing:
-        from keyboards.keyboards import active_ann_kb
         await message.answer(
             "⚠️ Sizda allaqachon faol e'lon mavjud.\n"
             "Yangi e'lon berish uchun avvalgi e'lonni yakunlang yoki bekor qiling:",
-            reply_markup=active_ann_kb(existing.id, "passenger"),
+            reply_markup=active_ann_kb(existing.id),
         )
         return
 
@@ -70,6 +60,8 @@ async def start_passenger_flow(message: Message, state: FSMContext, session: Asy
         reply_markup=share_location_kb(),
     )
 
+
+# ============ JOYLASHUV ============
 
 @router.message(PassengerForm.waiting_location, F.location)
 async def got_location(message: Message, state: FSMContext):
@@ -94,6 +86,8 @@ async def skip_location(message: Message, state: FSMContext):
     )
 
 
+# ============ ODAMLAR SONI ============
+
 @router.callback_query(F.data.startswith("pcount_"), PassengerForm.waiting_count)
 async def got_count(callback: CallbackQuery, state: FSMContext):
     count = int(callback.data.split("_")[1])
@@ -101,40 +95,40 @@ async def got_count(callback: CallbackQuery, state: FSMContext):
     await state.set_state(PassengerForm.waiting_price)
     await callback.message.edit_text(f"✅ {count} kishi tanlandi.")
     await callback.message.answer(
-        "💰 Taklif narxingizni yozing (masalan: 25000 so'm):",
+        "💰 Taklif narxingizni yozing (masalan: 25 000 so'm):",
         reply_markup=cancel_kb(),
     )
     await callback.answer()
 
 
+# ============ NARX ============
+
 @router.message(PassengerForm.waiting_price)
 async def got_price(message: Message, state: FSMContext, session: AsyncSession):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        user = await queries.get_user(session, message.from_user.id)
-        role = user.role if user else None
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
         return
-
-    await state.update_data(price=message.text)
+    await state.update_data(price=message.text.strip())
     await state.set_state(PassengerForm.waiting_note)
     await message.answer(
-        "📝 Izoh qo'shing (ixtiyoriy). Masalan: 'Mushugim bor', 'Yukim ko'p'\n"
+        "📝 Izoh qo'shing (ixtiyoriy).\n"
+        "Masalan: 'Katta yukim bor', 'Erta ketaman'\n"
         "Yo'q bo'lsa /skip yozing:",
         reply_markup=cancel_kb(),
     )
 
 
+# ============ IZOH → E'LON YARATISH ============
+
 @router.message(PassengerForm.waiting_note)
 async def got_note(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        user = await queries.get_user(session, message.from_user.id)
-        role = user.role if user else None
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb(role))
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
         return
 
-    note = None if message.text == "/skip" else message.text
+    note = None if message.text == "/skip" else message.text.strip()
     data = await state.get_data()
     await state.clear()
 
@@ -147,21 +141,24 @@ async def got_note(message: Message, state: FSMContext, session: AsyncSession, b
         note=note,
         location_lat=data.get("location_lat"),
         location_lon=data.get("location_lon"),
+        ann_type="passenger",
     )
 
     user = await queries.get_user(session, message.from_user.id)
-    await queries.update_user_role(session, user.user_id, "passenger")
-
     text = passenger_announcement_text(ann, user)
+
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann.id, channel_msg.message_id)
+    await queries.add_log(session, user.user_id, "passenger_ann_created", f"ann_id: {ann.id}")
 
     await message.answer(
         "✅ E'loningiz kanalga joylandi!\n"
-        "30 daqiqadan keyin sizdan so'rov yuboriladi.",
-        reply_markup=main_menu_kb("passenger"),
+        "⏱ 30 daqiqadan keyin holati so'raladi.",
+        reply_markup=main_menu_kb(),
     )
 
+
+# ============ YAKUNLASH ============
 
 @router.callback_query(F.data.startswith("p_done_"))
 async def passenger_done(callback: CallbackQuery, session: AsyncSession, bot: Bot):
@@ -178,9 +175,12 @@ async def passenger_done(callback: CallbackQuery, session: AsyncSession, bot: Bo
             pass
 
     await queries.update_announcement_status(session, ann_id, "completed")
+    await queries.add_log(session, callback.from_user.id, "passenger_ann_done", f"ann_id: {ann_id}")
     await callback.message.edit_text("✅ E'lon yakunlandi va kanaldan o'chirildi.")
     await callback.answer()
 
+
+# ============ QAYTA YUKLASH ============
 
 @router.callback_query(F.data.startswith("p_reload_"))
 async def passenger_reload(callback: CallbackQuery, session: AsyncSession, bot: Bot):
@@ -196,12 +196,15 @@ async def passenger_reload(callback: CallbackQuery, session: AsyncSession, bot: 
         except Exception:
             pass
 
-    user = await queries.get_user(session, ann.user_id)
-    text = passenger_announcement_text(ann, user)
+    # Vaqtni yangilash — kanal oxiriga tushadi
     ann.created_at = datetime.utcnow()
     await session.commit()
 
+    user = await queries.get_user(session, ann.user_id)
+    text = passenger_announcement_text(ann, user)
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann_id, channel_msg.message_id)
+    await queries.add_log(session, callback.from_user.id, "passenger_ann_reload", f"ann_id: {ann_id}")
+
     await callback.message.edit_text("🔄 E'lon yangilandi va kanal oxiriga joylashdi.")
-    await callback.answer()
+    await callback.answer("Yangilandi!")

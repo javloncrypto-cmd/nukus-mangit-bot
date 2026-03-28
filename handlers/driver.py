@@ -1,3 +1,15 @@
+# ================================================================
+# HAYDOVCHI HANDLERI — V2 UCHUN SAQLANGAN
+# ================================================================
+# Bu fayl hozir bot.py ga ulanmagan (include qilinmagan).
+# V2 da config.py dagi DRIVER_MODE = True qilib,
+# bot.py da quyidagini qo'shing:
+#
+#   from handlers import driver
+#   dp.include_router(driver.router)
+#
+# ================================================================
+
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -6,11 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
 from db import queries
-from keyboards.keyboards import (
-    cancel_kb, main_menu_kb, driver_control_kb,
-    driver_seats_kb, passengers_count_kb,
-)
-from utils.templates import driver_announcement_text
+from keyboards.keyboards import cancel_kb, main_menu_kb
 from config import CHANNEL_ID
 
 router = Router()
@@ -41,9 +49,8 @@ async def start_driver_flow(message: Message, state: FSMContext, session: AsyncS
     if existing:
         from keyboards.keyboards import active_ann_kb
         await message.answer(
-            "⚠️ Sizda allaqachon faol e'lon mavjud.\n"
-            "Yangi e'lon berish uchun avvalgi e'lonni yakunlang yoki bekor qiling:",
-            reply_markup=active_ann_kb(existing.id, "driver"),
+            "⚠️ Sizda allaqachon faol e'lon mavjud. Yakunlang yoki bekor qiling:",
+            reply_markup=active_ann_kb(existing.id),
         )
         return
 
@@ -62,13 +69,14 @@ async def start_driver_flow(message: Message, state: FSMContext, session: AsyncS
 async def driver_direction(message: Message, state: FSMContext):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb("driver"))
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
         return
     if message.text not in DIRECTION_MAP:
         await message.answer("Iltimos tugmadan tanlang.")
         return
     await state.update_data(direction=DIRECTION_MAP[message.text])
     await state.set_state(DriverForm.waiting_seats)
+    from keyboards.keyboards import passengers_count_kb
     await message.answer("👥 Bo'sh joylar sonini tanlang:", reply_markup=passengers_count_kb())
 
 
@@ -86,9 +94,9 @@ async def driver_seats(callback: CallbackQuery, state: FSMContext):
 async def driver_price(message: Message, state: FSMContext):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb("driver"))
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
         return
-    await state.update_data(price=message.text)
+    await state.update_data(price=message.text.strip())
     await state.set_state(DriverForm.waiting_note)
     await message.answer("📝 Izoh (ixtiyoriy, yo'q bo'lsa /skip):", reply_markup=cancel_kb())
 
@@ -97,10 +105,10 @@ async def driver_price(message: Message, state: FSMContext):
 async def driver_note(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb("driver"))
+        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb())
         return
 
-    note = None if message.text == "/skip" else message.text
+    note = None if message.text == "/skip" else message.text.strip()
     data = await state.get_data()
     await state.clear()
 
@@ -111,19 +119,21 @@ async def driver_note(message: Message, state: FSMContext, session: AsyncSession
         passengers_count=data["seats"],
         price=data["price"],
         note=note,
+        ann_type="driver",
     )
 
     user = await queries.get_user(session, message.from_user.id)
     await queries.update_user_role(session, user.user_id, "driver")
     await queries.add_log(session, user.user_id, "driver_ann_created", f"ann_id: {ann.id}")
 
+    from utils.templates_v2 import driver_announcement_text
     text = driver_announcement_text(ann, user)
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann.id, channel_msg.message_id)
 
     await message.answer(
         "✅ E'loningiz kanalga joylandi!\n1 daqiqadan keyin yo'lovchi topilganmi deb so'rayman.",
-        reply_markup=main_menu_kb("driver"),
+        reply_markup=main_menu_kb(),
     )
 
 
@@ -145,86 +155,15 @@ async def driver_reload(callback: CallbackQuery, session: AsyncSession, bot: Bot
     await session.commit()
 
     user = await queries.get_user(session, ann.user_id)
+    from utils.templates_v2 import driver_announcement_text
     text = driver_announcement_text(ann, user)
     channel_msg = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     await queries.update_announcement_channel_msg(session, ann_id, channel_msg.message_id)
     await queries.add_log(session, callback.from_user.id, "driver_ann_reload", f"ann_id: {ann_id}")
 
+    from keyboards.keyboards import driver_control_kb
     await callback.message.edit_text("🔄 E'lon yangilandi.", reply_markup=driver_control_kb(ann_id))
-    await callback.answer("E'lon qayta yuklandi!")
-
-
-@router.callback_query(F.data.startswith("d_change_"))
-async def driver_change_seats(callback: CallbackQuery, session: AsyncSession):
-    ann_id = int(callback.data.split("_")[2])
-    await callback.message.answer("Yangi bo'sh joylar sonini tanlang:", reply_markup=driver_seats_kb(ann_id))
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("d_seats_"))
-async def driver_seats_changed(callback: CallbackQuery, session: AsyncSession, bot: Bot):
-    parts = callback.data.split("_")
-    ann_id = int(parts[2])
-    new_count = int(parts[3])
-
-    ann = await queries.get_announcement(session, ann_id)
-    if not ann:
-        await callback.answer("E'lon topilmadi.")
-        return
-
-    await queries.update_announcement_passengers(session, ann_id, new_count)
-    ann.passengers_count = new_count
-
-    if ann.channel_msg_id:
-        user = await queries.get_user(session, ann.user_id)
-        text = driver_announcement_text(ann, user)
-        try:
-            await bot.edit_message_text(text, CHANNEL_ID, ann.channel_msg_id, parse_mode="HTML")
-        except Exception:
-            pass
-
-    await callback.message.edit_text(f"✅ Bo'sh joylar {new_count} taga o'zgartirildi.")
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("d_edit_"))
-async def driver_edit_start(callback: CallbackQuery, state: FSMContext):
-    ann_id = int(callback.data.split("_")[2])
-    await state.update_data(edit_ann_id=ann_id)
-    await state.set_state(DriverForm.waiting_edit_text)
-    await callback.message.answer("✍️ Yangi e'lon matnini yuboring (narx yoki izoh):", reply_markup=cancel_kb())
-    await callback.answer()
-
-
-@router.message(DriverForm.waiting_edit_text)
-async def driver_edit_done(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
-    if message.text == "❌ Bekor qilish":
-        await state.clear()
-        await message.answer("Bekor qilindi.", reply_markup=main_menu_kb("driver"))
-        return
-
-    data = await state.get_data()
-    ann_id = data["edit_ann_id"]
-    await state.clear()
-
-    ann = await queries.get_announcement(session, ann_id)
-    if not ann:
-        await message.answer("E'lon topilmadi.")
-        return
-
-    ann.note = message.text
-    await session.commit()
-
-    if ann.channel_msg_id:
-        user = await queries.get_user(session, ann.user_id)
-        text = driver_announcement_text(ann, user)
-        try:
-            await bot.edit_message_text(text, CHANNEL_ID, ann.channel_msg_id, parse_mode="HTML")
-        except Exception:
-            pass
-
-    await queries.add_log(session, message.from_user.id, "driver_ann_edited", f"ann_id: {ann_id}")
-    await message.answer("✅ E'lon yangilandi.", reply_markup=main_menu_kb("driver"))
+    await callback.answer("Yangilandi!")
 
 
 @router.callback_query(F.data.startswith("d_full_"))
@@ -257,6 +196,7 @@ async def driver_passenger_found(callback: CallbackQuery):
 async def driver_passenger_notfound(callback: CallbackQuery, session: AsyncSession):
     ann_id = int(callback.data.split("_")[2])
     ann = await queries.get_announcement(session, ann_id)
+    from keyboards.keyboards import driver_control_kb
     await callback.message.edit_text(
         "Tushunarli. E'lon hali ham kanalda turibdi.",
         reply_markup=driver_control_kb(ann_id) if ann else None,

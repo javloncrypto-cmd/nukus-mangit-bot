@@ -1,14 +1,46 @@
 # Nukus-Mangit Taksi Hamrohi Bot
 
-Telegram bot — Nukus va Mangit orasida yo'lovchi va haydovchilarni bog'lash.
+Telegram bot — Nukus va Mangit orasida yo'lovchilarni bog'lash.
+
+## Versiyalar
+
+| Versiya | Holat | Tavsif |
+|---------|-------|--------|
+| **V1** (hozirgi) | ✅ Faol | Faqat yo'lovchi e'lonlari |
+| V2 (kelajak) | 🔜 Rejalashtirilgan | Haydovchi e'lonlari + reyting |
 
 ## Texnologiyalar
-- Python 3.10+
+- Python 3.11
 - Aiogram 3.x (async)
 - PostgreSQL 14+
 - SQLAlchemy 2.0 (async)
 - APScheduler 3.x
-- Oracle Cloud Ubuntu 22.04
+- Redis (FSM uchun)
+
+## Fayl tuzilmasi
+```
+nukus_mangit_bot/
+├── bot.py                  # Asosiy kirish nuqtasi
+├── config.py               # .env sozlamalari + DRIVER_MODE flag
+├── requirements.txt        # Kutubxonalar
+├── migrations.sql          # DB jadvallari
+├── .env.example            # Namuna .env
+├── handlers/
+│   ├── common.py           # /start, profil, shikoyat
+│   ├── passenger.py        # Yo'lovchi flow (V1 faol)
+│   ├── driver.py           # Haydovchi flow (V2 uchun saqlangan)
+│   ├── admin.py            # Admin panel
+│   └── super_admin.py      # Super Admin panel
+├── keyboards/
+│   └── keyboards.py        # Barcha tugmalar (V2 tugmalari comment)
+├── db/
+│   ├── database.py         # ORM modellari
+│   └── queries.py          # DB so'rovlar
+├── scheduler/
+│   └── tasks.py            # APScheduler (V2 vazifalari comment)
+└── utils/
+    └── templates.py        # Kanal shablonlari
+```
 
 ## O'rnatish
 
@@ -18,18 +50,14 @@ git clone <repo-url>
 cd nukus_mangit_bot
 ```
 
-### 2. Virtual muhit yaratish
+### 2. Virtual muhit va kutubxonalar
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-### 3. Kutubxonalarni o'rnatish
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. PostgreSQL sozlash
+### 3. PostgreSQL sozlash
 ```bash
 sudo -u postgres psql
 CREATE DATABASE nukus_mangit_db;
@@ -40,84 +68,26 @@ GRANT ALL PRIVILEGES ON DATABASE nukus_mangit_db TO bot_user;
 psql -U bot_user -d nukus_mangit_db -f migrations.sql
 ```
 
-### 5. .env fayl yaratish
+### 4. .env fayl
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-`.env` faylini to'ldiring:
-```
-BOT_TOKEN=your_bot_token_here
-CHANNEL_ID=-100xxxxxxxxxx
-ADMIN_IDS=123456789,987654321
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=nukus_mangit_db
-DB_USER=bot_user
-DB_PASS=strong_password
-```
-
-### 6. Botni ishga tushirish
+### 5. Ishga tushirish
 ```bash
 python bot.py
 ```
 
-## Systemd orqali avtomatik ishga tushirish (Oracle Cloud)
+## V2 ga o'tish (haydovchi qo'shish)
 
-```bash
-sudo nano /etc/systemd/system/nukus-mangit-bot.service
-```
-
-```ini
-[Unit]
-Description=Nukus Mangit Taxi Bot
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/nukus_mangit_bot
-ExecStart=/home/ubuntu/nukus_mangit_bot/venv/bin/python bot.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable nukus-mangit-bot
-sudo systemctl start nukus-mangit-bot
-sudo systemctl status nukus-mangit-bot
-```
-
-## Loglarni ko'rish
-```bash
-sudo journalctl -u nukus-mangit-bot -f
-```
-
-## Fayl tuzilmasi
-```
-nukus_mangit_bot/
-├── bot.py                  # Asosiy kirish nuqtasi
-├── config.py               # .env sozlamalari
-├── requirements.txt        # Kutubxonalar
-├── migrations.sql          # DB jadvallari
-├── .env.example            # Namuna .env
-├── handlers/
-│   ├── common.py           # /start, ro'yxat, reyting
-│   ├── passenger.py        # Yo'lovchi flow
-│   ├── driver.py           # Haydovchi flow
-│   └── admin.py            # Admin panel
-├── keyboards/
-│   └── keyboards.py        # Barcha tugmalar
-├── db/
-│   ├── database.py         # ORM modellari, ulanish
-│   └── queries.py          # SQL so'rovlar
-├── scheduler/
-│   └── tasks.py            # APScheduler vazifalari
-└── utils/
-    └── templates.py        # Kanal shablonlari
-```
+1. `config.py` da `DRIVER_MODE = True` qiling
+2. `bot.py` da haydovchi handler ni yoching:
+   ```python
+   from handlers import driver
+   dp.include_router(driver.router)
+   ```
+3. `keyboards/keyboards.py` da V2 tugmalarini yoching
+4. `utils/templates.py` da `driver_announcement_text` ni yoching
+5. `scheduler/tasks.py` da haydovchi vazifalarini yoching
+6. `main_menu_kb()` funksiyasiga haydovchi tugmalarini qo'shing

@@ -3,14 +3,16 @@ from aiogram import Bot
 
 from db.database import async_session_maker
 from db import queries
-from keyboards.keyboards import (
-    passenger_confirm_kb, driver_interval_kb,
-    driver_feedback_kb, rating_kb,
-)
+from keyboards.keyboards import passenger_confirm_kb
 
+
+# ============ YO'LOVCHI TEKSHIRUVI ============
 
 async def check_passenger_announcements(bot: Bot):
-    """30 daqiqa o'tgan yo'lovchi e'lonlarini tekshiradi"""
+    """
+    30 daqiqa o'tgan faol yo'lovchi e'lonlarini tekshiradi.
+    Egasiga yakunlash/qayta yuklash tugmalari yuboriladi.
+    """
     from datetime import datetime, timedelta
     from sqlalchemy import select, and_
     from db.database import Announcement
@@ -22,6 +24,7 @@ async def check_passenger_announcements(bot: Bot):
             select(Announcement).where(
                 and_(
                     Announcement.status == "active",
+                    Announcement.ann_type == "passenger",
                     Announcement.created_at <= cutoff,
                 )
             )
@@ -35,92 +38,18 @@ async def check_passenger_announcements(bot: Bot):
             try:
                 await bot.send_message(
                     ann.user_id,
-                    "⏱ 30 daqiqa o'tdi. E'lonni yakunlaymizmi?",
+                    "⏱ 30 daqiqa o'tdi. Haydovchi topildimi?\n"
+                    "E'lonni yakunlaymizmi yoki qayta yuklaymizmi?",
                     reply_markup=passenger_confirm_kb(ann.id),
                 )
             except Exception:
                 pass
 
 
-async def check_driver_interval(bot: Bot):
-    """1 daqiqadan 10 daqiqagacha bo'lgan haydovchi e'lonlarini tekshiradi.
-
-    Avvalgi versiyada cutoff_max=now-30s bo'lgani uchun juda tor oyna bo'lib,
-    ko'p e'lonlar o'tib ketardi. Endi barcha 1-10 daqiqa oralig'idagi
-    faol haydovchi e'lonlari tekshiriladi.
-    """
-    from datetime import datetime, timedelta
-    from sqlalchemy import select, and_
-    from db.database import Announcement
-
-    now = datetime.utcnow()
-    cutoff_min = now - timedelta(minutes=10)
-    cutoff_max = now - timedelta(minutes=1)
-
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(Announcement).where(
-                and_(
-                    Announcement.status == "active",
-                    Announcement.created_at <= cutoff_max,
-                    Announcement.created_at >= cutoff_min,
-                )
-            )
-        )
-        anns = result.scalars().all()
-
-        for ann in anns:
-            user = await queries.get_user(session, ann.user_id)
-            if not user or user.role != "driver":
-                continue
-            try:
-                await bot.send_message(
-                    ann.user_id,
-                    "🚗 Yo'lovchi topildimi?",
-                    reply_markup=driver_interval_kb(ann.id),
-                )
-            except Exception:
-                pass
-
-
-async def check_driver_feedback(bot: Bot):
-    """1 soat avval yakunlangan haydovchi e'lonlari uchun feedback so'raydi."""
-    from datetime import datetime, timedelta
-    from sqlalchemy import select, and_
-    from db.database import Announcement
-
-    now = datetime.utcnow()
-    cutoff_min = now - timedelta(hours=1, minutes=10)
-    cutoff_max = now - timedelta(hours=1)
-
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(Announcement).where(
-                and_(
-                    Announcement.status == "completed",
-                    Announcement.created_at <= cutoff_max,
-                    Announcement.created_at >= cutoff_min,
-                )
-            )
-        )
-        anns = result.scalars().all()
-
-        for ann in anns:
-            user = await queries.get_user(session, ann.user_id)
-            if not user or user.role != "driver":
-                continue
-            try:
-                await bot.send_message(
-                    ann.user_id,
-                    "🚗 Safar yakunlandimi?",
-                    reply_markup=driver_feedback_kb(ann.id),
-                )
-            except Exception:
-                pass
-
+# ============ ESKIRGAN E'LONLARNI TOZALASH ============
 
 async def cleanup_expired_announcements(bot: Bot):
-    """24 soatdan o'tgan e'lonlarni tozalaydi."""
+    """24 soatdan o'tgan faol e'lonlarni avtomatik yopadi."""
     from config import CHANNEL_ID
 
     async with async_session_maker() as session:
@@ -132,11 +61,23 @@ async def cleanup_expired_announcements(bot: Bot):
                 except Exception:
                     pass
             await queries.update_announcement_status(session, ann.id, "expired")
+            # Foydalanuvchiga xabar berish
+            try:
+                await bot.send_message(
+                    ann.user_id,
+                    "⏰ E'loningiz 24 soat muddati o'tgani sababli avtomatik yopildi.\n"
+                    "Kerak bo'lsa yangi e'lon bering.",
+                )
+            except Exception:
+                pass
 
+
+# ============ SCHEDULER SOZLASH ============
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="Asia/Tashkent")
 
+    # Yo'lovchi e'lonlarini 5 daqiqada bir tekshirish
     scheduler.add_job(
         check_passenger_announcements,
         trigger="interval",
@@ -145,22 +86,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         id="passenger_check",
     )
 
-    scheduler.add_job(
-        check_driver_interval,
-        trigger="interval",
-        minutes=1,
-        args=[bot],
-        id="driver_interval",
-    )
-
-    scheduler.add_job(
-        check_driver_feedback,
-        trigger="interval",
-        minutes=10,
-        args=[bot],
-        id="driver_feedback",
-    )
-
+    # Eskirgan e'lonlarni soatda bir tozalash
     scheduler.add_job(
         cleanup_expired_announcements,
         trigger="interval",
@@ -168,5 +94,18 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         args=[bot],
         id="cleanup",
     )
+
+    # ================================================================
+    # V2 UCHUN SAQLANGAN VAZIFALAR (hozir o'chirilgan):
+    #
+    # scheduler.add_job(
+    #     check_driver_interval,       # 1 daqiqada haydovchiga so'rov
+    #     trigger="interval", minutes=1, args=[bot], id="driver_interval",
+    # )
+    # scheduler.add_job(
+    #     check_driver_feedback,       # 1 soat keyin safar tugadimi?
+    #     trigger="interval", minutes=10, args=[bot], id="driver_feedback",
+    # )
+    # ================================================================
 
     return scheduler

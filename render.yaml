@@ -25,3 +25,5 @@ services:
         sync: false
       - key: DB_PASS
         sync: false
+      - key: REDIS_URL
+        sync: false
